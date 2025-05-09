@@ -1,1 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>超星手势签到助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 毛玻璃容器 */
+        .glass {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        /* 背景图层 */
+        body {
+            background-size: cover;
+            background-position: center;
+            transition: background-image 0.5s ease-in-out;
+        }
+        /* 控制按钮样式 */
+        .bg-btn {
+            @apply px-3 py-1 bg-white/50 backdrop-blur-sm rounded-lg text-gray-800 hover:bg-white/70 transition;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- 导航栏 -->
+    <nav class="fixed top-0 left-0 right-0 glass py-4 px-6 z-10">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="flex items-center gap-2 text-gray-800 text-xl font-bold">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                超星手势签到助手
+            </h1>
+            <div class="flex space-x-2">
+                <button id="prevBg" class="bg-btn">上一张</button>
+                <button id="nextBg" class="bg-btn">下一张</button>
+            </div>
+        </div>
+    </nav>
 
+    <!-- 主体内容 -->
+    <div class="container mx-auto pt-28 px-4">
+        <!-- 表单区域 -->
+        <div class="max-w-2xl mx-auto glass bg-white/70 p-8 rounded-2xl shadow-lg mb-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">启动签到任务</h2>
+            <form id="taskForm" class="space-y-4">
+                <div>
+                    <label class="block text-gray-700 font-medium mb-2" for="activeId">活动ID</label>
+                    <input id="activeId" type="text" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-medium mb-2" for="cookie">Cookie</label>
+                    <textarea id="cookie" rows="4" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                </div>
+                <button type="submit"
+                    class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-medium hover:opacity-90 transition duration-200">
+                    开始签到
+                </button>
+            </form>
+        </div>
+
+        <!-- 状态显示 -->
+        <div id="statusCard" class="hidden max-w-2xl mx-auto glass bg-white/70 p-8 rounded-2xl shadow-lg">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">任务状态</h3>
+            <div class="mb-4">
+                <div class="flex justify-between text-sm text-gray-600 mb-1">
+                    <span>进度</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="progressBar" class="bg-gradient-to-r from-blue-500 to-indigo-500 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+            <p class="text-sm text-gray-600 mb-2">当前尝试：<span id="currentCode">等待开始...</span></p>
+            <div id="successMessage" class="hidden mt-4 p-4 bg-green-100 text-green-700 rounded-lg">
+                ✅ 签到成功！手势码：<span id="successCode" class="font-mono"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // 背景图列表，放在 static/images/ 下
+        const bgImages = [
+            '/static/images/bg1.jpg',
+            '/static/images/bg2.jpg',
+            '/static/images/bg3.jpg'
+        ];
+        let bgIndex = 0;
+        function setBackground() {
+            document.body.style.backgroundImage = `url('${bgImages[bgIndex]}')`;
+        }
+        document.getElementById('prevBg').onclick = () => {
+            bgIndex = (bgIndex - 1 + bgImages.length) % bgImages.length;
+            setBackground();
+        };
+        document.getElementById('nextBg').onclick = () => {
+            bgIndex = (bgIndex + 1) % bgImages.length;
+            setBackground();
+        };
+        // 初始化背景
+        setBackground();
+
+        // 签到任务逻辑
+        document.getElementById('taskForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const activeId = document.getElementById('activeId').value;
+            const cookie = document.getElementById('cookie').value;
+            const statusCard = document.getElementById('statusCard');
+            const progressBar = document.getElementById('progressBar');
+            const progressPercent = document.getElementById('progressPercent');
+            const currentCode = document.getElementById('currentCode');
+            const successMessage = document.getElementById('successMessage');
+            const successCode = document.getElementById('successCode');
+            statusCard.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            progressPercent.textContent = '0%';
+            currentCode.textContent = '初始化...';
+            successMessage.classList.add('hidden');
+            fetch('/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active_id: activeId, cookie: cookie })
+            })
+            .then(resp => resp.json())
+            .then(data => {
+                const taskId = data.task_id;
+                const interval = setInterval(() => {
+                    fetch(`/status/${taskId}`)
+                        .then(r => r.json())
+                        .then(status => {
+                            if (status.state === 'PROGRESS') {
+                                progressBar.style.width = status.progress + '%';
+                                progressPercent.textContent = status.progress.toFixed(2) + '%';
+                                currentCode.textContent = status.current_code;
+                                if (status.found) {
+                                    clearInterval(interval);
+                                    successCode.textContent = status.success_code;
+                                    successMessage.classList.remove('hidden');
+                                }
+                            } else if (status.state === 'not_found') {
+                                clearInterval(interval);
+                                currentCode.textContent = '任务未找到';
+                            }
+                        });
+                }, 1000);
+            });
+        });
+    </script>
+</body>
+</html>
